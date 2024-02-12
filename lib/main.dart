@@ -1,34 +1,21 @@
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:riverpod_todo_firestore/todo_list.dart';
 
 
 void main() async{
   WidgetsFlutterBinding.ensureInitialized();
   await Firebase.initializeApp();
   runApp(
-      ProviderScope(child: MyApp())
+      const ProviderScope(child: MyApp())
   );
 }
 
 ///TodoListProvider
 final todoListProvider = StateProvider((ref) => <TodoList>[]);
 
-///TodoList class
-class TodoList {
-
-  TodoList(
-      {required this.title,
-        required this.description,
-        required this.isCompleted,
-        required this.createdAt}
-      );
-
-  final String title;
-  final String description;
-  final bool isCompleted;
-  final DateTime createdAt;
-}
 
 
 class MyApp extends StatelessWidget {
@@ -39,47 +26,71 @@ class MyApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return MaterialApp(
       debugShowCheckedModeBanner: false,
-      title: 'TodoList-Riverpod-Firebase',
+      title: 'TodoList-RiverPod-Firebase',
       theme: ThemeData(
         colorScheme: ColorScheme.fromSeed(seedColor: Colors.deepPurple),
         useMaterial3: true,
       ),
-      home: const MyHomePage(title: 'TodoList-Riverpod-Firebase'),
+      home: const MyHomePage(title: 'TodoList-RiverPod-Firebase'),
     );
   }
 }
 
-class MyHomePage extends StatefulWidget {
+class MyHomePage extends ConsumerWidget {
   const MyHomePage({super.key, required this.title});
 
   final String title;
 
   @override
-  State<MyHomePage> createState() => _MyHomePageState();
-}
-
-class _MyHomePageState extends State<MyHomePage> {
-
-
-  @override
-  Widget build(BuildContext context) {
-
+  Widget build(BuildContext context, WidgetRef ref) {
     return Scaffold(
       appBar: AppBar(
         backgroundColor: Theme.of(context).colorScheme.inversePrimary,
-        title: Text(widget.title),
+        title: Text(title),
       ),
-      body: Center(
+      body: FutureBuilder<QuerySnapshot>(
+        future: FirebaseFirestore.instance.collection('todoList').get(),
+        builder: (context, snapshot) {
+          if (snapshot.connectionState == ConnectionState.waiting) {
+            return const Center(child: CircularProgressIndicator());
+          }
 
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: <Widget>[
-            const Text(
-              'TodoList-Riverpod-Firebase',
-            ),
-          ],
-        ),
+          if (snapshot.hasError) {
+            return const Center(child: Text('エラーが発生しました'));
+          }
+
+          for (var doc in snapshot.data!.docs) {
+            ref.read(todoListProvider).add(
+              TodoList(
+                id: doc.id,
+                title: doc['title'],
+                description: doc['description'],
+                isCompleted: doc['isCompleted'],
+                createdAt: doc['createdAt'].toDate(),
+              ),
+            );
+          }
+
+          return ListView.builder(
+            itemCount: ref.watch(todoListProvider).length,
+            itemBuilder: (context, index) {
+              final todo = ref.watch(todoListProvider)[index];
+              return ListTile(
+                title: Text(todo.title),
+                subtitle: Text(todo.description),
+                trailing: IconButton(
+                  icon: const Icon(Icons.delete),
+                  onPressed: () {
+                    FirebaseFirestore.instance.collection('todoList').doc(todo.id).delete();
+                  },
+                ),
+              );
+            },
+          );
+        },
       ),
     );
   }
 }
+
+
